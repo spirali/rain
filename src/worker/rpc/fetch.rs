@@ -1,14 +1,17 @@
 use futures::{future, Future};
 use worker::data::{Data, DataBuilder};
+use worker::State;
 use errors::Error;
 
 // TODO: Remove box when impl Trait
 pub fn fetch_from_reader(
+    state: &State,
     reader: ::datastore_capnp::reader::Client,
     builder: DataBuilder,
     size: Option<usize>,
 ) -> Box<Future<Item = Data, Error = Error>> {
     let fetch_size = size.unwrap_or(1 << 20 /* 1 MB */);
+    let state = state.self_ref();
     Box::new(future::loop_fn(builder, move |mut builder| {
         let mut req = reader.read_request();
         req.get().set_size(fetch_size as u64);
@@ -23,7 +26,7 @@ pub fn fetch_from_reader(
                         Ok(future::Loop::Continue(builder))
                     }
                     ::datastore_capnp::read_reply::Status::Eof => {
-                        Ok(future::Loop::Break(builder.build()))
+                        Ok(future::Loop::Break(builder.build(state.get().work_dir())))
                     }
                 }
             })

@@ -4,6 +4,8 @@ use errors::Result;
 use super::super::fs::workdir::WorkDir;
 use common::DataType;
 use worker::fs::tempfile::TempFileName;
+use std::io::Write;
+
 
 enum BuilderStorage {
     Memory(Vec<u8>),
@@ -20,7 +22,7 @@ impl DataBuilder {
 
         fn file_storage(workdir: &WorkDir) -> BuilderStorage {
             let f = workdir.make_temp_file();
-            BuilderStorage::File((File::open(f.path()).unwrap(), f))
+            BuilderStorage::File((File::create(f.path()).unwrap(), f))
         }
 
         let storage = if let Some(size) = expected_size {
@@ -51,16 +53,35 @@ impl DataBuilder {
     pub fn write(&mut self, data: &[u8]) {
         match self.storage {
             BuilderStorage::Memory(ref mut buffer) => buffer.extend_from_slice(data),
-            BuilderStorage::File(ref file, _) => file.write_all(data),
+            BuilderStorage::File((ref file, _)) => file.write_all(data).unwrap(),
         }
     }
 
-    pub fn build(&mut self) -> Data {
-        match self.storage {
-            BuilderStorage::Memory(ref mut buffer) => Data::new(
-                Storage::Memory(::std::mem::replace(buffer, Vec::new())),
-                self.data_type,
-            )
-        }
+    pub fn build(&mut self, workdir: &WorkDir) -> Data {
+        let storage = match self.storage {
+            BuilderStorage::Memory(ref mut buffer) =>
+                Data::new(Storage::Memory(::std::mem::replace(buffer, Vec::new())), self.data_type),
+            BuilderStorage::File((ref mut file, ref mut tmpfile)) => {
+                file.close();
+                let target = workdir.new_path_for_dataobject();
+                match self.data_type {
+                    DataType::Blob =>  {
+                        let metadata = ::std::fs::metadata(tmpfile.path()).unwrap();
+                        Data::new_by_fs_move(tmpfile.path(), &metadata, target, workdir.data_path())
+                    }
+                    DataType::Directory => {
+                        let dir = workdir.make_temp_dir().unwrap();
+                        let unpacked_path = dir.path().join("dir");
+                        let archive = File::open(&tmpfile.path()).unwrap();
+                        let metadata = ::std::fs::metadata(&unpacked_path).unwrap();
+                        ::tar::Archive::new().unpack(unpacked_path).unwrap();
+                        Data::new_by_fs_move(&unpacked_path, &metadata, target, workdir.data_path())
+                    }
+
+                }
+
+            }
+        };
+        Data::new(storage, self.data_type)
     }
 }
