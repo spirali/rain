@@ -11,7 +11,6 @@ pub fn fetch_from_reader(
     size: Option<usize>,
 ) -> Box<Future<Item = Data, Error = Error>> {
     let fetch_size = size.unwrap_or(1 << 20 /* 1 MB */);
-    let state = state.self_ref();
     Box::new(future::loop_fn(builder, move |mut builder| {
         let mut req = reader.read_request();
         req.get().set_size(fetch_size as u64);
@@ -26,7 +25,7 @@ pub fn fetch_from_reader(
                         Ok(future::Loop::Continue(builder))
                     }
                     ::datastore_capnp::read_reply::Status::Eof => {
-                        Ok(future::Loop::Break(builder.build(state.get().work_dir())))
+                        Ok(future::Loop::Break(builder.build()))
                     }
                 }
             })
