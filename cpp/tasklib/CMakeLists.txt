@@ -51,6 +51,15 @@ add_library(tasklib
   src/context.h
 )
 
+install (TARGETS tasklib
+         ARCHIVE DESTINATION lib
+         LIBRARY DESTINATION lib)
+
+INSTALL (
+    DIRECTORY ${CMAKE_SOURCE_DIR}/src/
+    DESTINATION include/tasklib
+    FILES_MATCHING PATTERN "*.h*")
+
 target_include_directories(tasklib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_include_directories(tasklib PRIVATE
         ${SPDLOG_ROOT}/src/spdlog/include
